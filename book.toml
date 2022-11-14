@@ -1,0 +1,6 @@
+[book]
+authors = ["liukcj"]
+language = "en"
+multilingual = false
+src = "src"
+title = "CTF Write-ups"
