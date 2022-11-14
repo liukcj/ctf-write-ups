@@ -1,5 +1,5 @@
 # Shellcode Runner 2
-## Challenge Detail
+## Challenge Details
 ![](assets/shellcode_runner2_details.png)
 
 source:

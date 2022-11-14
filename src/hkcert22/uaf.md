@@ -1,4 +1,4 @@
-s# UAF
+# UAF
 ## Challenge details
 ![](assets/uaf_detail.png)
 

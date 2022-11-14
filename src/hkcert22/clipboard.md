@@ -1,5 +1,5 @@
 # Clipboard
-## Challenge Detail
+## Challenge Details
 ![](assets/clipboard_detail.png)
 
 ## Solution
