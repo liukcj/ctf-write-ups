@@ -1,6 +1,6 @@
 # Shellcode Runner 2
 ## Challenge Detail
-![](../assets/shellcode_runner2_details.png)
+![](assets/shellcode_runner2_details.png)
 
 source:
 ```c
